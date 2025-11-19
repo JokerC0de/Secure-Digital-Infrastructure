@@ -1,104 +1,111 @@
-# Secure-Digital-Infrastructure  
-**Student Number:** 747171  
-
-## System Overview
-Ubuntu 22.04 VM configured per ACW specification. Follows least-privilege principles; tested via `curl` and the automated client.
-
-### User Accounts & SSH Keys
-| Account     | Status / Access |
-|------------|----------------|
-| sysadmin   | Deleted (including home) |
-| ubuntu     | Default; password updated |
-| maintenance | Existing; unchanged |
-| marketing  | SFTP `/srv/www`; no design/audit access |
-| design     | SSH shell; read/write home; no web upload |
-| audit      | SFTP-only; read-only to marketing, design, `/srv/www` |
-
-- SSH keys installed for `marketing`, `design`, `audit`  
-- Public keys in `~/.ssh/authorized_keys`, private keys stored locally  
-
-### Design Directory Structure
-~/project_rocket/
-cad/
-render/
-~/project_cheese/
-research/
-tests/
-
-yaml
-Copy code
+# 747171 - Secure Digital Infrastructure VM Configuration
 
 ---
 
-## SFTP Access
-| User      | Access |
-|-----------|--------|
-| marketing | Read/write `/srv/www` |
-| design    | Read/write home only |
-| audit     | Read-only SFTP; chrooted |
+## 1. User Accounts & Permissions
 
-Configured via `/etc/ssh/sshd_config` Match blocks, proper `chown`/`chmod`.
+- **maintenance**: Default account, **untouched** (used by automated testing).  
+- **marketing**:  
+  - Can upload/read/write files to `/srv/www/` via SFTP.  
+  - Cannot access `design` or `audit` directories.  
+- **design**:  
+  - SSH access, can read/write only home directories.  
+  - Home subdirectories (nested):
+    ```
+    project_rocket/cad/
+    project_rocket/render/
+    project_rocket/project_cheese/
+    project_rocket/research/
+    project_rocket/tests/
+    ```
+- **audit**:  
+  - Read-only SFTP access to `/home/design/`, `/home/marketing/`, `/srv/www/`.  
+  - No shell access.  
+- **sysadmin**: Deleted, including home directory.  
+- **SSH keys** enabled for all accounts, root login disabled.
 
 ---
 
-## Web Server (Apache)
-- Serves static files from `/srv/www`  
-- `/srv/www/student/index.txt` contains `747171`  
-- Site config (`sdi.conf`) with `DocumentRoot /srv/www` and `/student/` alias  
-- Marketing uploads allowed  
+## 2. SFTP & File Transfer
 
-**Test:**
+- **marketing**: read/write `/srv/www/`  
+- **design**: read/write home directories only  
+- **audit**: read-only, no shell  
+- Directories created as per specification for `design`.
+
+---
+
+## 3. Web Server (Static Files)
+
+- **Apache2** installed, serving HTTP on port 80  
+- Root directory: `/srv/www`  
+- Default test file for automated check:  
+/srv/www/student/index.txt
+Content: 747171
+
+
+
+- Permissions: static files readable by all, writable by `marketing` only
+
+---
+
+## 4. Docker Container & Reverse Proxy
+
+- Docker installed, container from:  
+[SDI-Docker GitHub](https://github.com/sbrl/SDI-Docker.git)  
+- Container runs HTTP server on port 3000, starts automatically on boot  
+- Apache2 reverse proxy configuration:
+- `stu-747171-vm1.net.dcs.hull.ac.uk` → static web server  
+- `docker.stu-747171-vm1.net.dcs.hull.ac.uk` → Docker container  
+- Ensures all HTTP traffic goes through port 80
+
+---
+
+## 5. Security Measures
+
+- Root login disabled; all access via **SSH keys**  
+- Home directories permissioned per ACW specification  
+- **Firewall (UFW)** enabled: allow 22 (SSH), 80 (HTTP)  
+- Regular system updates applied:
 ```bash
-curl http://10.31.224.48/student/
-curl -H "Host: stu-747171-vm1.net.dcs.hull.ac.uk" http://10.31.224.48/
-Docker & Reverse Proxy
-Cloned & built app:
+sudo apt update && sudo apt upgrade -y
+6. Common Maintenance Tasks
+Update system:
 
 bash
-Copy code
-git clone https://github.com/sbrl/SDI-Docker.git
-docker build -t sdi-app .
-Runs automatically via sdi-docker.service:
+
+sudo apt update && sudo apt upgrade -y
+Check service status:
 
 bash
-Copy code
-docker run -p 3000:3000 --name sdi_container sdi-app
-Reverse proxy (docker.conf):
-
-docker.stu-747171-vm1.net.dcs.hull.ac.uk → localhost:3000
-
-Proxy modules enabled:
+ 
+sudo systemctl status apache2
+sudo systemctl status docker
+Restart services:
 
 bash
-Copy code
-a2enmod proxy proxy_http
-Test Docker:
-
-bash
-Copy code
-curl -H "Host: docker.stu-747171-vm1.net.dcs.hull.ac.uk" http://10.31.224.48/
-Maintenance
-bash
-Copy code
-# Restart services
+ 
 sudo systemctl restart apache2
-sudo systemctl restart sdi-docker
+sudo systemctl restart docker
+Backup web directory:
 
-# Check status
-systemctl status apache2
-systemctl status sdi-docker
+bash
+ 
+sudo tar -czvf /backup/www_backup.tar.gz /srv/www/
+Add/remove users:
 
-# Update system
-sudo apt update && sudo apt upgrade
+bash
+ 
+sudo adduser [username]
+sudo deluser [username] --remove-home
+7. Notes
+Fully compliant with automated testing for accounts, SFTP, web server, and Docker
 
-# Rebuild Docker image after changes
-docker build -t sdi-app .
-systemctl restart sdi-docker
-Apache logs: /var/log/apache2/error.log & /var/log/apache2/access.log
+All services configured to survive VM reboot
 
-Notes
-Least-privilege and clear role separation applied
+No passwords included; all accounts use SSH keys only
 
-Static site and Docker app securely available via correct hostnames
+Nested directories created as required; permissions strictly enforced
 
-Permissions and SSH key placement ensure secure access for all users
+  
+ 
