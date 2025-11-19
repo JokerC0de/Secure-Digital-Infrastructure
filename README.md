@@ -1,141 +1,104 @@
-## Secure-Digital-Infrastructure
+# Secure-Digital-Infrastructure  
+**Student Number:** 747171  
 
-# student number: 747171
+## System Overview
+Ubuntu 22.04 VM configured per ACW specification. Follows least-privilege principles; tested via `curl` and the automated client.
 
-# 1. System Configuration Overview
+### User Accounts & SSH Keys
+| Account     | Status / Access |
+|------------|----------------|
+| sysadmin   | Deleted (including home) |
+| ubuntu     | Default; password updated |
+| maintenance | Existing; unchanged |
+| marketing  | SFTP `/srv/www`; no design/audit access |
+| design     | SSH shell; read/write home; no web upload |
+| audit      | SFTP-only; read-only to marketing, design, `/srv/www` |
 
-This server is an Ubuntu 24.04 VM configured according to the Secure Digital Infrastructure ACW specification. All work was completed using SSH, following least-privilege principles, and tested with curl and the automated client.
+- SSH keys installed for `marketing`, `design`, `audit`  
+- Public keys in `~/.ssh/authorized_keys`, private keys stored locally  
 
-User Accounts
+### Design Directory Structure
+~/project_rocket/
+cad/
+render/
+~/project_cheese/
+research/
+tests/
 
-Deleted: sysadmin (user + home directory).
+yaml
+Copy code
 
-Existing: ubuntu, maintenance.
+---
 
-Created: marketing, design, audit.
+## SFTP Access
+| User      | Access |
+|-----------|--------|
+| marketing | Read/write `/srv/www` |
+| design    | Read/write home only |
+| audit     | Read-only SFTP; chrooted |
 
-SSH Keys
+Configured via `/etc/ssh/sshd_config` Match blocks, proper `chown`/`chmod`.
 
-SSH keypairs for marketing, design, and audit were downloaded using:
-sdi-client sshkey --acct <user> --type public/private
-Public keys were placed in each account’s ~/.ssh/authorized_keys with correct permissions. Private keys were stored locally.
+---
 
-Account Restrictions
+## Web Server (Apache)
+- Serves static files from `/srv/www`  
+- `/srv/www/student/index.txt` contains `747171`  
+- Site config (`sdi.conf`) with `DocumentRoot /srv/www` and `/student/` alias  
+- Marketing uploads allowed  
 
-marketing: SFTP + write access to /srv/www for website uploads. No access to design or audit directories.
-
-design: Shell access + full access to own home directory. No web upload permissions.
-
-audit: SFTP-only, no shell. Read-only access to marketing home, design home, and /srv/www.
-
-Permissions were implemented using user groups, directory ownership, and chmod/chown.
-
-Directory Structure (design)
-~/project_rocket/cad
-~/project_rocket/render
-~/project_cheese/research
-~/project_cheese/tests
-
-## 2. File Transfer (SFTP)
-
-marketing: read/write to /srv/www via SFTP.
-
-design: read/write only inside their home directory.
-
-audit: SFTP-only chroot, read-only to design, marketing, and /srv/www.
-
-Implementation included:
-
-Subsystem SFTP configuration in /etc/ssh/sshd_config.
-
-Match blocks enforcing SFTP-only and read-only restrictions for audit.
-
-Correct directory ownership under /home/*.
-
-## 3. Web Server (Apache HTTP)
-
-Apache was installed and configured to serve static files from:
-
-/srv/www
-
-
-The required file /srv/www/student/index.txt contains:
-
-747171
-
-
-A custom Apache site (sdi.conf) was created with:
-
-DocumentRoot /srv/www
-
-Directory permissions allowing marketing uploads
-
-Alias for /student/
-
-Tested using:
-
+**Test:**
+```bash
 curl http://10.31.224.48/student/
+curl -H "Host: stu-747171-vm1.net.dcs.hull.ac.uk" http://10.31.224.48/
+Docker & Reverse Proxy
+Cloned & built app:
 
-
-Static site correctly loads for:
-
-IP: 10.31.224.48
-
-Domain: stu-747171-vm1.net.dcs.hull.ac.uk
-
-## 4. Docker Application & Reverse Proxy
-
-The SDI-Docker application was cloned and built:
-
+bash
+Copy code
 git clone https://github.com/sbrl/SDI-Docker.git
 docker build -t sdi-app .
+Runs automatically via sdi-docker.service:
 
-
-A systemd service (sdi-docker.service) runs the container automatically on boot:
-
+bash
+Copy code
 docker run -p 3000:3000 --name sdi_container sdi-app
+Reverse proxy (docker.conf):
 
-Reverse Proxy
-
-A second Apache site (docker.conf) proxies:
-
-docker.stu-747171-vm1.net.dcs.hull.ac.uk  →  localhost:3000
-
+docker.stu-747171-vm1.net.dcs.hull.ac.uk → localhost:3000
 
 Proxy modules enabled:
 
+bash
+Copy code
 a2enmod proxy proxy_http
+Test Docker:
 
-
-Tested with:
-
+bash
+Copy code
 curl -H "Host: docker.stu-747171-vm1.net.dcs.hull.ac.uk" http://10.31.224.48/
-
-## 5. Maintenance Tasks
-
-Restart services:
-
+Maintenance
+bash
+Copy code
+# Restart services
 sudo systemctl restart apache2
 sudo systemctl restart sdi-docker
 
-
-Check service status:
-
+# Check status
 systemctl status apache2
 systemctl status sdi-docker
 
-
-Update system packages:
+# Update system
 sudo apt update && sudo apt upgrade
 
-View Apache logs:
-/var/log/apache2/error.log and access.log
-
-Rebuild Docker image after changes:
-
+# Rebuild Docker image after changes
 docker build -t sdi-app .
 systemctl restart sdi-docker
+Apache logs: /var/log/apache2/error.log & /var/log/apache2/access.log
 
-## 6. Notes
+Notes
+Least-privilege and clear role separation applied
 
-The configuration follows least-privilege principles, separates user roles clearly, and ensures both the static site and Docker application are securely available through the correct hostnames.
+Static site and Docker app securely available via correct hostnames
+
+Permissions and SSH key placement ensure secure access for all users
